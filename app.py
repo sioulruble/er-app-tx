@@ -121,17 +121,13 @@ def process_video(source_type, emotion_model):
                     current_time = time.time() - st.session_state.start_time
                     timestamp = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                     
-                    # Process every 2nd frame to reduce load
                     if frame_count % 2 == 0:
-                        # Analyze frame
                         result = analyze_emotion(frame, emotion_model)
                         
-                        # Get dominant emotion
                         emotions = list(result["emotion"].keys())
                         scores = list(result["emotion"].values())
                         dominant_emotion = emotions[np.argmax(scores)]
                         
-                        # Record data
                         st.session_state.emotion_data.append({
                             'timestamp': timestamp,
                             'seconds': round(current_time, 3),
