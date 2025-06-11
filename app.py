@@ -8,6 +8,40 @@ import random
 import pandas as pd
 import os
 from datetime import datetime
+import sys
+import traceback
+
+# Importer le module LSTM
+try:
+    # Ajouter le répertoire courant au chemin de recherche Python
+    import sys
+    import os
+    # Chemin absolu vers le dossier du projet
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.append(project_dir)
+    
+    # 1. Essayer l'importation directe (si le fichier est dans le même dossier)
+    try:
+        from lstm_model import LSTMEmotionModel
+        LSTM_AVAILABLE = True
+    except ImportError:
+        # 2. Essayer l'importation depuis un sous-dossier models/lstm
+        try:
+            sys.path.append(os.path.join(project_dir, 'models'))
+            from lstm.lstm_model import LSTMEmotionModel
+            LSTM_AVAILABLE = True
+        except ImportError:
+            # 3. Dernière tentative avec un chemin relatif
+            try:
+                sys.path.append(os.path.join(project_dir, 'models', 'lstm'))
+                from lstm_model import LSTMEmotionModel
+                LSTM_AVAILABLE = True
+            except ImportError:
+                st.error("LSTM module not found. Please check the file structure.")
+                LSTM_AVAILABLE = False
+except Exception as e:
+    st.error(f"Error importing LSTM module: {str(e)}")
+    LSTM_AVAILABLE = False
 
 def main():
     st.title("TX - Emotion Recognition 😀")
@@ -19,12 +53,25 @@ def main():
 
     st.sidebar.title("Options")
     
-    emotion_model = st.sidebar.selectbox(
-        "Choose emotion recognition model",
-        ["Basic Model", "Advanced Model", "Custom Model"]
-    )
+    # Vérifier si LSTM est disponible
+    if LSTM_AVAILABLE:
+        emotion_model = st.sidebar.selectbox(
+            "Choose emotion recognition model",
+            ["LSTM Model"]
+        )
+    else:
+        emotion_model = st.sidebar.selectbox(
+            "Choose emotion recognition model",
+            ["Basic Model", "Advanced Model", "Custom Model"]
+        )
+        if emotion_model == "LSTM Model":
+            st.error("LSTM Model is not available. Please check the installation.")
     
     media_type = st.sidebar.radio("Media Type", ["Image", "Video"])
+    
+    # Avertir que LSTM ne fonctionne qu'avec des vidéos
+    if emotion_model == "LSTM Model" and media_type == "Image":
+        st.warning("LSTM model is designed for video analysis only. Results may not be accurate for single images.")
     
     source_type = st.sidebar.radio("Source", ["Gallery", "Webcam"])
     
@@ -73,14 +120,20 @@ def process_video(source_type, emotion_model):
                     csv_data = analyze_video_to_csv(tfile.name, emotion_model)
                     st.success("Analysis complete!")
                     
-                    # Direct CSV download
-                    csv = csv_data.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name=f"emotions_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
+                    # Create two columns for download and table display
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        # Direct CSV download
+                        csv = csv_data.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="Download CSV",
+                            data=csv,
+                            file_name=f"emotions_video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                    with col2:
+                        # Display CSV content as a table
+                        st.dataframe(csv_data)
     else:
         # Initialize session state
         if 'recording' not in st.session_state:
@@ -108,7 +161,7 @@ def process_video(source_type, emotion_model):
             stframe.info("Recording in progress... Please wait.")
             placeholder = st.empty()
             
-            cap = cv2.VideoCapture(0)
+            cap = cv2.VideoCapture(1)
             try:
                 frame_count = 0
                 while st.session_state.recording:
@@ -151,13 +204,19 @@ def process_video(source_type, emotion_model):
             
             csv_df = pd.DataFrame(st.session_state.emotion_data)
             
-            csv = csv_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Emotions CSV",
-                data=csv,
-                file_name=f"emotions_webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+            # Create two columns for download and table display
+            col1, col2 = st.columns(2)
+            with col1:
+                csv = csv_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Emotions CSV",
+                    data=csv,
+                    file_name=f"emotions_webcam_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            with col2:
+                # Display CSV content as a table
+                st.dataframe(csv_df)
             
             if len(st.session_state.frames) > 0:
                 with st.spinner("Generating video file..."):
@@ -186,6 +245,36 @@ def process_video(source_type, emotion_model):
                         st.error(f"Error generating video: {str(e)}")
 
 def analyze_emotion(image, model_type, real_time=False):
+    """
+    Analyse une image pour détecter les émotions
+    
+    Args:
+        image: Image à analyser (numpy array)
+        model_type: Type de modèle à utiliser
+        real_time: Indique si l'analyse est en temps réel
+        
+    Returns:
+        Dict avec les émotions détectées et leurs scores
+    """
+    if model_type == "LSTM Model" and LSTM_AVAILABLE:
+        try:
+            # Utiliser le modèle LSTM pour l'analyse d'image
+            # Notez que LSTM est conçu pour la vidéo, pas les images fixes
+            lstm_model = LSTMEmotionModel()
+            return lstm_model.analyze_frame(image)
+        except Exception as e:
+            st.error(f"Error analyzing with LSTM model: {str(e)}")
+            traceback.print_exc()
+            # Revenir à un modèle de base en cas d'erreur
+            return default_emotion_analysis()
+    else:
+        # Utiliser le modèle de base pour l'analyse d'image
+        return default_emotion_analysis()
+
+def default_emotion_analysis():
+    """
+    Analyse d'émotions par défaut (pour la démonstration)
+    """
     emotions = ["happy", "sad", "angry", "surprised", "fearful", "disgusted", "neutral"]
     
     result = {"emotion": {}}
@@ -224,6 +313,34 @@ def annotate_image(image, result):
     return img_copy
 
 def analyze_video_to_csv(video_path, model_type):
+    """
+    Analyse une vidéo pour détecter les émotions et génère un CSV
+    
+    Args:
+        video_path: Chemin vers la vidéo
+        model_type: Type de modèle à utiliser
+        
+    Returns:
+        DataFrame avec les résultats d'analyse
+    """
+    if model_type == "LSTM Model" and LSTM_AVAILABLE:
+        try:
+            # Utiliser le modèle LSTM pour l'analyse vidéo
+            lstm_model = LSTMEmotionModel()
+            return lstm_model.process_video(video_path)
+        except Exception as e:
+            st.error(f"Error analyzing video with LSTM model: {str(e)}")
+            traceback.print_exc()
+            # Revenir à un modèle de base en cas d'erreur
+            return default_video_analysis(video_path)
+    else:
+        # Utiliser le modèle de base pour l'analyse vidéo
+        return default_video_analysis(video_path)
+
+def default_video_analysis(video_path):
+    """
+    Analyse vidéo par défaut (pour la démonstration)
+    """
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -240,7 +357,7 @@ def analyze_video_to_csv(video_path, model_type):
                 
                 timestamp = frame_count / fps
                 
-                result = analyze_emotion(frame, model_type)
+                result = default_emotion_analysis()
                 
                 emotions = list(result["emotion"].keys())
                 scores = list(result["emotion"].values())
@@ -252,8 +369,9 @@ def analyze_video_to_csv(video_path, model_type):
                     'emotion': dominant_emotion,
                     'confidence': max(scores)
                 })
-            
-            progress_bar.progress(min(frame_count / total_frames, 1.0))
+            if progress_bar:
+        
+                progress_bar.progress(min(frame_count / total_frames, 1.0))
     
     cap.release()
     
