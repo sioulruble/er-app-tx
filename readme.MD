@@ -1,7 +1,7 @@
 # TX - Emotion Recognition
 
 Real-time emotion recognition application developed as part of a student project at Univeristy of Technology of Compiègne
-
+![Application Interface](imgs/interface.png)
 
 ## Installation
 
